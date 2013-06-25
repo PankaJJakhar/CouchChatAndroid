@@ -1,0 +1,3 @@
+include ':CouchChatAndroid', ':CBLite', ':CBLiteEktorp'
+project(':CBLite').projectDir = new File(settingsDir, '../CBLite')
+project(':CBLiteEktorp').projectDir = new File(settingsDir, '../CBLiteEktorp')
