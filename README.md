@@ -8,7 +8,7 @@ This is a demo chat client which uses [Couchbase Lite](https://github.com/couchb
 
 Unlike [GrocerySync-Android](https://github.com/couchbaselabs/GrocerySync-Android) which uses remote Maven artifacts to depend on Couchbase-Lite, CouchChat requires the code for Couchbase-Lite to be on the filesystem, and it builds the Couchbase-Lite code directly as part of the build process.  This enables easy debugging and hacking on Couchbase-Lite.
 
-* Clone git repon via `git clone https://github.com/couchbaselabs/CouchChatAndroid.git`
+* `git clone https://github.com/couchbaselabs/CouchChatAndroid.git` to clone the git repo.
 
 * `cd CouchChatAndroid` 
 
