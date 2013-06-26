@@ -71,8 +71,6 @@ Unlike [GrocerySync-Android](https://github.com/couchbaselabs/GrocerySync-Androi
 
 * Repeat previous step for ../couchbase-lite-android/CouchbaseLiteProject/CBLiteEktorp.  It should looks something like [this](http://cl.ly/image/1e2L2R0i0E14)
 
-* Choose CouchChatAndroid under list of modules and hit the - sign above it to delete it.
-
 
 * Hit Apply and OK
 
