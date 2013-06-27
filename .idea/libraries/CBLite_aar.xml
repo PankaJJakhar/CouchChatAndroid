@@ -3,6 +3,7 @@
     <CLASSES>
       <root url="jar://$PROJECT_DIR$/CouchChatAndroid/build/exploded-bundles/CBLite.aar/classes.jar!/" />
       <root url="jar://$PROJECT_DIR$/CouchChatAndroid/build/exploded-bundles/CBLite.aar/classes.jar!/" />
+      <root url="jar://$PROJECT_DIR$/CouchChatAndroid/build/exploded-bundles/CBLite.aar/classes.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />
