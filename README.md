@@ -71,6 +71,7 @@ Unlike [GrocerySync-Android](https://github.com/couchbaselabs/GrocerySync-Androi
 
 * Repeat previous step for ../couchbase-lite-android/CouchbaseLiteProject/CBLiteEktorp.  It should looks something like [this](http://cl.ly/image/1e2L2R0i0E14)
 
+
 * Hit Apply and OK
 
 * Restart Android Studio.  The project window should look something like [this](http://cl.ly/image/2S172z3C3e36)
