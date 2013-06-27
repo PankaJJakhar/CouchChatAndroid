@@ -150,6 +150,8 @@ public class MainActivity extends Activity {
         // create a local database
         couchDbConnector = dbInstance.createConnector(DATABASE_NAME, true);
 
+        // add on the persona assertion as a parameter.  needed for hack
+        // described here: http://bit.ly/17lsw2a
         ReplicationCommand pushCommand = new ReplicationCommand.Builder()
                 .source(getReplicationURL().toExternalForm() + "?" + CBLPersonaAuthorizer.QUERY_PARAMETER + "=" + assertion)
                 .target(DATABASE_NAME)
