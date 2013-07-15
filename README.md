@@ -1,5 +1,7 @@
 # CouchChat-Android
 
+__NOTE: CouchChat is currently just a stub, and very little actual development has taken place so far.  At the moment, it is only useful as an "empty project example" as well as an example of using Mozilla Persona for login.__
+
 This is a demo chat client which uses [Couchbase Lite](https://github.com/couchbase/couchbase-lite-android) as the mobile database, and can use either [Apache CouchDB](http://couchdb.apache.org/) or the [SyncGateway](https://github.com/couchbaselabs/sync_gateway) + [Couchbase Server](http://www.couchbase.com/couchbase-server/overview) as a backend.  It uses Mozilla Persona as a login scheme.
 
 ![architecture.png](http://cl.ly/image/3I1w402Y1B22/couchchat-architecture.png)
@@ -83,7 +85,6 @@ After these steps, the following should work:
 * Imports of Couchbase-Lite code should be resolved automatically by Android Studio
 
 * Code navigation (eg, Cmd-Mouseclick) into Couchbase-Lite should work.
-
 
 
 
