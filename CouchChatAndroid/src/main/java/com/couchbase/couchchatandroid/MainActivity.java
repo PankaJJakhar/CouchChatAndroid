@@ -172,7 +172,9 @@ public class MainActivity extends Activity {
     @Override
     public void onResume() {
         super.onResume();
-        mWebView.loadUrl(SIGNIN_URL);
+        if (mWebView != null) {
+            mWebView.loadUrl(SIGNIN_URL);
+        }
     }
 
 
