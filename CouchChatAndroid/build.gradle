@@ -17,6 +17,9 @@ repositories {
 
 dependencies {
     compile 'com.android.support:support-v4:13.0.+'
+
+    compile fileTree(dir: 'libs', include: 'td_collator_so.jar')
+
     compile project(':CBLite')
     compile project(':CBLiteEktorp')
 }
