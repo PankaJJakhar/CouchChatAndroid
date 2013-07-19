@@ -97,28 +97,49 @@ public class MainActivity extends Activity {
             @Override
             public void call(Session session, SessionState state, Exception exception) {
 
-                if (session.isOpened()) {
+                try {
 
-                    // make request to the /me API
-                    Request.executeMeRequestAsync(session, new Request.GraphUserCallback() {
+                    if (exception != null) {
+                        throw exception;
+                    }
 
-                        // callback after Graph API response with user object
-                        @Override
-                        public void onCompleted(GraphUser user, Response response) {
+                    if (session.isOpened()) {
 
-                            if (user != null) {
-                                TextView welcome = (TextView) findViewById(R.id.hello_world);
-                                welcome.setText("Hello " + user.getName() + "!");
+                        // make request to the /me API
+                        Request.executeMeRequestAsync(session, new Request.GraphUserCallback() {
+
+                            // callback after Graph API response with user object
+                            @Override
+                            public void onCompleted(GraphUser user, Response response) {
+
+                                if (user != null) {
+                                    TextView welcome = (TextView) findViewById(R.id.hello_world);
+                                    welcome.setText("Hello " + user.getName() + "!");
+                                }
+
                             }
+                        });
 
-                        }
-                    });
-
+                    }
+                } catch (Exception e) {
+                    String message = String.format("Exception accessing facebook session: %s. See logs for details.", e.getLocalizedMessage());
+                    alert(message, e);
                 }
             }
         });
+    }
+
+    private void alert(String message, Exception e) {
+
+        Context context = getApplicationContext();
+        CharSequence text = (CharSequence) message;
+        int duration = Toast.LENGTH_LONG;
+
+        Toast toast = Toast.makeText(context, text, duration);
+        toast.show();
 
 
+        Log.e(TAG, message, e);
     }
 
     protected String getServerPath() {
@@ -273,7 +294,6 @@ public class MainActivity extends Activity {
             toast.show();
 
             startReplications(assertion);
-
 
         }
     }
