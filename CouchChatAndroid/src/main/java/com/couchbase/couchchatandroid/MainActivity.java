@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.app.Activity;
 import android.preference.PreferenceManager;
-import android.util.Base64;
 import android.util.Log;
 import android.view.Menu;
 import android.view.Window;
@@ -15,14 +14,10 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import com.couchbase.cblite.CBLBody;
 import com.couchbase.cblite.CBLDatabase;
-import com.couchbase.cblite.CBLRevision;
 import com.couchbase.cblite.CBLServer;
-import com.couchbase.cblite.CBLStatus;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
-import com.couchbase.cblite.replicator.CBLPusher;
 import com.couchbase.cblite.replicator.CBLReplicator;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
 import com.couchbase.cblite.support.FileDirUtils;
@@ -40,12 +35,8 @@ import org.ektorp.impl.StdCouchDbInstance;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 public class MainActivity extends Activity {
@@ -56,7 +47,7 @@ public class MainActivity extends Activity {
 
     protected WebView mWebView;
     public static final String DATABASE_URL = "http://10.0.2.2:4984";
-    public static final String DATABASE_NAME = "cblite-test";
+    public static final String DATABASE_NAME = "couchchat";
 
     protected final String SIGNIN_URL = "https://login.persona.org/sign_in#NATIVE";
 
@@ -81,149 +72,13 @@ public class MainActivity extends Activity {
             initializedUrlHandler = true;
         }
 
-        deleteExistingLocalDB();
         startCBLite();
         startDatabase();
         startEktorp();
-        // setupWebView(getReplicationURL().toExternalForm());
-        doScratchpad();
+        setupWebView(getReplicationURL().toExternalForm());
 
 
     }
-
-    protected void doScratchpad() {
-
-        EktorpAsyncTask asyncTask = new EktorpAsyncTask() {
-
-            @Override
-            protected void doInBackground() {
-                try {
-                    testPuller();
-                } catch (Throwable throwable) {
-                    Log.e(TAG, throwable.getLocalizedMessage(), throwable);
-                }
-            }
-
-            @Override
-            protected void onSuccess() {
-                Log.d(TAG, "onSucces()");
-            }
-        };
-        asyncTask.execute();
-
-    }
-
-    public void testPusher() throws Throwable {
-
-        URL remote = getReplicationURL();
-
-        // deleteRemoteDB(remote);
-
-        // Create some documents:
-        Map<String, Object> documentProperties = new HashMap<String, Object>();
-        documentProperties.put("_id", "doc1");
-        documentProperties.put("foo", 1);
-        documentProperties.put("bar", false);
-
-        CBLBody body = new CBLBody(documentProperties);
-        CBLRevision rev1 = new CBLRevision(body);
-
-        CBLStatus status = new CBLStatus();
-        rev1 = database.putRevision(rev1, null, false, status);
-        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
-
-        documentProperties.put("_rev", rev1.getRevId());
-        documentProperties.put("UPDATED", true);
-
-        @SuppressWarnings("unused")
-        CBLRevision rev2 = database.putRevision(new CBLRevision(documentProperties), rev1.getRevId(), false, status);
-        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
-
-        documentProperties = new HashMap<String, Object>();
-        documentProperties.put("_id", "doc2");
-        documentProperties.put("baz", 666);
-        documentProperties.put("fnord", true);
-
-        database.putRevision(new CBLRevision(documentProperties), null, false, status);
-        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
-
-        final CBLReplicator repl = database.getReplicator(remote, true, false, server.getWorkExecutor());
-        ((CBLPusher)repl).setCreateTarget(true);
-        repl.start();
-
-        while(repl.isRunning()) {
-            Log.i(TAG, "Waiting for replicator to finish");
-            Thread.sleep(1000);
-        }
-        Assert.assertEquals("3", repl.getLastSequence());
-    }
-
-    public void testPuller() throws Throwable {
-
-        //force a push first, to ensure that we have data to pull
-        testPusher();
-
-        URL remote = getReplicationURL();
-
-        final CBLReplicator repl = database.getReplicator(remote, false, false, server.getWorkExecutor());
-        repl.start();
-
-        while(repl.isRunning()) {
-            Log.i(TAG, "Waiting for replicator to finish");
-            Thread.sleep(1000);
-        }
-        String lastSequence = repl.getLastSequence();
-        Assert.assertTrue("2".equals(lastSequence) || "3".equals(lastSequence));
-        Assert.assertEquals(2, database.getDocumentCount());
-
-
-        //wait for a short time here
-        //we want to ensure that the previous replicator has really finished
-        //writing its local state to the server
-        Thread.sleep(2*1000);
-
-        final CBLReplicator repl2 = database.getReplicator(remote, false, false, server.getWorkExecutor());
-        repl2.start();
-
-        while(repl2.isRunning()) {
-            Log.i(TAG, "Waiting for replicator2 to finish");
-            Thread.sleep(1000);
-        }
-        Assert.assertEquals(3, database.getLastSequence());
-
-        CBLRevision doc = database.getDocumentWithIDAndRev("doc1", null, EnumSet.noneOf(CBLDatabase.TDContentOptions.class));
-        Assert.assertNotNull(doc);
-        Assert.assertTrue(doc.getRevId().startsWith("2-"));
-        Assert.assertEquals(1, doc.getProperties().get("foo"));
-
-        doc = database.getDocumentWithIDAndRev("doc2", null, EnumSet.noneOf(CBLDatabase.TDContentOptions.class));
-        Assert.assertNotNull(doc);
-        Assert.assertTrue(doc.getRevId().startsWith("1-"));
-        Assert.assertEquals(true, doc.getProperties().get("fnord"));
-
-    }
-
-    protected void deleteRemoteDB(URL url) {
-        try {
-            Log.v(TAG, String.format("Deleting %s", url.toExternalForm()));
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-
-            String userInfo = url.getUserInfo();
-            if(userInfo != null) {
-                byte[] authEncBytes = Base64.encode(userInfo.getBytes(), Base64.DEFAULT);
-
-                conn.setRequestProperty("Authorization", "Basic " + new String(authEncBytes));
-            }
-
-            conn.setRequestMethod("DELETE");
-            conn.connect();
-            int responseCode = conn.getResponseCode();
-            Assert.assertTrue(responseCode < 300 || responseCode == 404);
-        } catch (Exception e) {
-            Log.e(TAG, "Exceptiong deleting remote db", e);
-        }
-    }
-
 
     protected String getServerPath() {
         String filesDir = getFilesDir().getAbsolutePath();
@@ -232,22 +87,20 @@ public class MainActivity extends Activity {
 
     protected void startCBLite() {
         try {
+            String serverPath = getServerPath();
+            File serverPathFile = new File(serverPath);
+            FileDirUtils.deleteRecursive(serverPathFile);
+            serverPathFile.mkdir();
             server = new CBLServer(getServerPath());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void deleteExistingLocalDB() {
-        String serverPath = getServerPath();
-        File serverPathFile = new File(serverPath);
-        FileDirUtils.deleteRecursive(serverPathFile);
-        serverPathFile.mkdir();
-    }
-
     protected void startDatabase() {
-        database = server.getDatabaseNamed(DATABASE_NAME, true);
-        database.open();
+        CBLDatabase db = server.getExistingDatabaseNamed(DATABASE_NAME);
+        db = server.getDatabaseNamed(DATABASE_NAME, true);
+        db.open();
     }
 
     protected void startEktorp() {
@@ -319,9 +172,7 @@ public class MainActivity extends Activity {
     @Override
     public void onResume() {
         super.onResume();
-        if (mWebView != null) {
-            mWebView.loadUrl(SIGNIN_URL);
-        }
+        mWebView.loadUrl(SIGNIN_URL);
     }
 
 
