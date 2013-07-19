@@ -2,9 +2,13 @@ package com.couchbase.couchchatandroid;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.os.Bundle;
 import android.app.Activity;
 import android.preference.PreferenceManager;
+import android.util.Base64;
 import android.util.Log;
 import android.view.Menu;
 import android.view.Window;
@@ -37,7 +41,14 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CountDownLatch;
+
+import com.facebook.*;
+import com.facebook.model.*;
+import android.widget.TextView;
+import android.content.Intent;
 
 public class MainActivity extends Activity {
 
@@ -49,15 +60,13 @@ public class MainActivity extends Activity {
     public static final String DATABASE_URL = "http://10.0.2.2:4984";
     public static final String DATABASE_NAME = "couchchat";
 
-    protected final String SIGNIN_URL = "https://login.persona.org/sign_in#NATIVE";
-
     protected static HttpClient httpClient;
     protected CBLServer server = null;
     protected CBLDatabase database = null;
     protected CouchDbInstance dbInstance;
     protected CouchDbConnector couchDbConnector;
 
-    // This is the name our JS interface becomes on window
+    protected final String SIGNIN_URL = "https://login.persona.org/sign_in#NATIVE";
     private static final String GLOBAL_OBJECT_NAME = "__personaAndroid";
     private static final String CALLBACK = "function __personaAndroidCallback(assertion) { " + GLOBAL_OBJECT_NAME + ".onAssertion(assertion); }";
 
@@ -75,9 +84,60 @@ public class MainActivity extends Activity {
         startCBLite();
         startDatabase();
         startEktorp();
-        setupWebView(getReplicationURL().toExternalForm());
+
+        setContentView(R.layout.activity_main);
 
 
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(
+                    "com.couchbase.couchchatandroid", PackageManager.GET_SIGNATURES);
+            for (Signature signature : info.signatures)
+            {
+                MessageDigest md = MessageDigest.getInstance("SHA");
+                md.update(signature.toByteArray());
+                Log.d("KeyHash:", Base64.encodeToString(md.digest(), Base64.DEFAULT));
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+        } catch (NoSuchAlgorithmException e) {
+        }
+
+        // setupWebView(getReplicationURL().toExternalForm());
+        doFbLogin();
+
+
+
+    }
+
+    private void doFbLogin() {
+        // start Facebook Login
+        Session.openActiveSession(this, true, new Session.StatusCallback() {
+
+            // callback when session changes state
+            @Override
+            public void call(Session session, SessionState state, Exception exception) {
+
+                if (session.isOpened()) {
+
+                    // make request to the /me API
+                    Request.executeMeRequestAsync(session, new Request.GraphUserCallback() {
+
+                        // callback after Graph API response with user object
+                        @Override
+                        public void onCompleted(GraphUser user, Response response) {
+
+                            if (user != null) {
+                                TextView welcome = (TextView) findViewById(R.id.hello_world);
+                                welcome.setText("Hello " + user.getName() + "!");
+                            }
+
+                        }
+                    });
+
+
+                }
+
+            }
+        });
     }
 
     protected String getServerPath() {
@@ -244,5 +304,11 @@ public class MainActivity extends Activity {
         getMenuInflater().inflate(R.menu.main, menu);
         return true;
     }
-    
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        Session.getActiveSession().onActivityResult(this, requestCode, resultCode, data);
+    }
+
 }

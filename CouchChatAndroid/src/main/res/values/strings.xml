@@ -4,5 +4,7 @@
     <string name="app_name">CouchChatAndroid</string>
     <string name="action_settings">Settings</string>
     <string name="hello_world">Hello world!</string>
+    <string name="app_id">191474870874160</string>
+
 
 </resources>

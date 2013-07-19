@@ -20,6 +20,8 @@ dependencies {
 
     compile fileTree(dir: 'libs', include: 'td_collator_so.jar')
 
+    compile 'com.couchbase.cblite:FacebookSDK:3.0.2'  // built from: http://bit.ly/17qYuJG
+
     compile project(':CBLite')
     compile project(':CBLiteEktorp')
 }
