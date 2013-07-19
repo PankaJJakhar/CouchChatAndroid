@@ -1,14 +1,8 @@
 package com.couchbase.couchchatandroid;
 
 import android.content.Context;
-import android.content.SharedPreferences;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.Signature;
 import android.os.Bundle;
 import android.app.Activity;
-import android.preference.PreferenceManager;
-import android.util.Base64;
 import android.util.Log;
 import android.view.Menu;
 import android.view.Window;
@@ -22,17 +16,13 @@ import com.couchbase.cblite.CBLDatabase;
 import com.couchbase.cblite.CBLServer;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
-import com.couchbase.cblite.replicator.CBLReplicator;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
 import com.couchbase.cblite.support.FileDirUtils;
-
-import junit.framework.Assert;
 
 import org.ektorp.CouchDbConnector;
 import org.ektorp.CouchDbInstance;
 import org.ektorp.ReplicationCommand;
 import org.ektorp.ReplicationStatus;
-import org.ektorp.ViewQuery;
 import org.ektorp.android.util.EktorpAsyncTask;
 import org.ektorp.http.HttpClient;
 import org.ektorp.impl.StdCouchDbInstance;
@@ -41,8 +31,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CountDownLatch;
 
 import com.facebook.*;
@@ -66,10 +54,15 @@ public class MainActivity extends Activity {
     protected CouchDbInstance dbInstance;
     protected CouchDbConnector couchDbConnector;
 
-    protected final String SIGNIN_URL = "https://login.persona.org/sign_in#NATIVE";
-    private static final String GLOBAL_OBJECT_NAME = "__personaAndroid";
-    private static final String CALLBACK = "function __personaAndroidCallback(assertion) { " + GLOBAL_OBJECT_NAME + ".onAssertion(assertion); }";
+    protected final String PERSONA_SIGNIN_URL = "https://login.persona.org/sign_in#NATIVE";
+    private static final String PERSONA_GLOBAL_OBJECT_NAME = "__personaAndroid";
+    private static final String PERSONA_CALLBACK = "function __personaAndroidCallback(assertion) { " + PERSONA_GLOBAL_OBJECT_NAME + ".onAssertion(assertion); }";
 
+    public enum AuthenticationMechanism {
+        PERSONA, FACEBOOK
+    }
+
+    private AuthenticationMechanism authenticationMechanism = AuthenticationMechanism.FACEBOOK;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,30 +78,18 @@ public class MainActivity extends Activity {
         startDatabase();
         startEktorp();
 
-        setContentView(R.layout.activity_main);
-
-
-        try {
-            PackageInfo info = getPackageManager().getPackageInfo(
-                    "com.couchbase.couchchatandroid", PackageManager.GET_SIGNATURES);
-            for (Signature signature : info.signatures)
-            {
-                MessageDigest md = MessageDigest.getInstance("SHA");
-                md.update(signature.toByteArray());
-                Log.d("KeyHash:", Base64.encodeToString(md.digest(), Base64.DEFAULT));
-            }
-        } catch (PackageManager.NameNotFoundException e) {
-        } catch (NoSuchAlgorithmException e) {
+        if (authenticationMechanism == AuthenticationMechanism.FACEBOOK) {
+            setContentView(R.layout.activity_main);
+            doFbLogin();
         }
-
-        // setupWebView(getReplicationURL().toExternalForm());
-        doFbLogin();
-
-
+        else if (authenticationMechanism == AuthenticationMechanism.PERSONA) {
+            setupWebView(getReplicationURL().toExternalForm());   // TODO: this should start an activity rather than doing it this way
+        }
 
     }
 
     private void doFbLogin() {
+
         // start Facebook Login
         Session.openActiveSession(this, true, new Session.StatusCallback() {
 
@@ -133,11 +114,11 @@ public class MainActivity extends Activity {
                         }
                     });
 
-
                 }
-
             }
         });
+
+
     }
 
     protected String getServerPath() {
@@ -233,7 +214,7 @@ public class MainActivity extends Activity {
     public void onResume() {
         super.onResume();
         if (mWebView != null) {
-            mWebView.loadUrl(SIGNIN_URL);
+            mWebView.loadUrl(PERSONA_SIGNIN_URL);
         }
     }
 
@@ -251,7 +232,7 @@ public class MainActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
 
-        mWebView.addJavascriptInterface(new BrowserIDInterface(), GLOBAL_OBJECT_NAME);
+        mWebView.addJavascriptInterface(new BrowserIDInterface(), PERSONA_GLOBAL_OBJECT_NAME);
 
         final Activity activity = this;
         mWebView.setWebChromeClient(new WebChromeClient() {
@@ -269,10 +250,10 @@ public class MainActivity extends Activity {
 
             public void onPageFinished(WebView view, String url) {
                 Log.d(TAG, "setupWebview.onPageFinished() called with url: " + url);
-                if (url.equals(SIGNIN_URL)) {
-                    Log.d("LoginActivity", GLOBAL_OBJECT_NAME);
+                if (url.equals(PERSONA_SIGNIN_URL)) {
+                    Log.d("LoginActivity", PERSONA_GLOBAL_OBJECT_NAME);
 
-                    String cmd = "javascript:BrowserID.internal.get('" + personaUrl + "', " + CALLBACK + ");";
+                    String cmd = "javascript:BrowserID.internal.get('" + personaUrl + "', " + PERSONA_CALLBACK + ");";
                     Log.d("LoginActivity", cmd);
                     mWebView.loadUrl(cmd);
                 }
