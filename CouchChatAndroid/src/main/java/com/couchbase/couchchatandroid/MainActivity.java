@@ -14,6 +14,7 @@ import android.widget.Toast;
 
 import com.couchbase.cblite.CBLDatabase;
 import com.couchbase.cblite.CBLServer;
+import com.couchbase.cblite.auth.CBLFacebookAuthorizer;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
@@ -29,8 +30,10 @@ import org.ektorp.impl.StdCouchDbInstance;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.concurrent.CountDownLatch;
 
 import com.facebook.*;
@@ -105,6 +108,8 @@ public class MainActivity extends Activity {
 
                     if (session.isOpened()) {
 
+                        final String accessToken = session.getAccessToken();
+
                         // make request to the /me API
                         Request.executeMeRequestAsync(session, new Request.GraphUserCallback() {
 
@@ -115,6 +120,8 @@ public class MainActivity extends Activity {
                                 if (user != null) {
                                     TextView welcome = (TextView) findViewById(R.id.hello_world);
                                     welcome.setText("Hello " + user.getName() + "!");
+
+                                    startReplicationsWithFacebookToken(accessToken, (String)user.getProperty("email"));
                                 }
 
                             }
@@ -200,11 +207,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    public void startReplications(String assertion) {
+    public void startReplicationsWithPersonaAssertions(String assertion) {
 
-        Log.d(TAG, "startReplications()");
-
-        CountDownLatch doneSignal = new CountDownLatch(1);
+        Log.d(TAG, "startReplicationsWithPersonaAssertions()");
 
         httpClient = new CBLiteHttpClient(server);
         dbInstance = new StdCouchDbInstance(httpClient);
@@ -223,11 +228,37 @@ public class MainActivity extends Activity {
         ReplicationStatus status = dbInstance.replicate(pushCommand);
         Log.d(TAG, "replicationStatus: " + status);
 
+    }
+
+    public void startReplicationsWithFacebookToken(String accessToken, String email) {
+
+        httpClient = new CBLiteHttpClient(server);
+        dbInstance = new StdCouchDbInstance(httpClient);
+
+        // create a local database
+        couchDbConnector = dbInstance.createConnector(DATABASE_NAME, true);
+
+        String urlWithExtraParams = null;
         try {
-            doneSignal.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            urlWithExtraParams = String.format("%s?%s=%s&%s=%s",
+                    getReplicationURL().toExternalForm(),
+                    CBLFacebookAuthorizer.QUERY_PARAMETER,
+                    accessToken,
+                    CBLFacebookAuthorizer.QUERY_PARAMETER_EMAIL,
+                    URLEncoder.encode(email, "utf-8")
+            );
+        } catch (UnsupportedEncodingException e) {
+            throw new IllegalArgumentException(e);
         }
+
+        ReplicationCommand pushCommand = new ReplicationCommand.Builder()
+                .source(urlWithExtraParams)
+                .target(DATABASE_NAME)
+                .continuous(false)
+                .build();
+
+        ReplicationStatus status = dbInstance.replicate(pushCommand);
+
 
     }
 
@@ -293,7 +324,7 @@ public class MainActivity extends Activity {
             Toast toast = Toast.makeText(context, text, duration);
             toast.show();
 
-            startReplications(assertion);
+            startReplicationsWithPersonaAssertions(assertion);
 
         }
     }
