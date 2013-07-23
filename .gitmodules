@@ -1,0 +1,3 @@
+[submodule "CBLiteConsole"]
+	path = CBLiteConsole
+	url = git@github.com:couchbaselabs/CBLiteConsole.git
