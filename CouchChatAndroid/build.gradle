@@ -24,6 +24,8 @@ dependencies {
 
     compile project(':CBLite')
     compile project(':CBLiteEktorp')
+    compile project(':CBLiteConsole')
+
 }
 
 android {
