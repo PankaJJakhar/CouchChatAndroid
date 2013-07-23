@@ -5,17 +5,20 @@ import android.os.Bundle;
 import android.app.Activity;
 import android.util.Log;
 import android.view.Menu;
+import android.view.View;
 import android.view.Window;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.Toast;
 
 import com.couchbase.cblite.CBLDatabase;
 import com.couchbase.cblite.CBLServer;
 import com.couchbase.cblite.auth.CBLFacebookAuthorizer;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
+import com.couchbase.cblite.cbliteconsole.CBLiteConsoleActivity;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
 import com.couchbase.cblite.support.FileDirUtils;
@@ -88,6 +91,14 @@ public class MainActivity extends Activity {
         else if (authenticationMechanism == AuthenticationMechanism.PERSONA) {
             setupWebView(getReplicationURL().toExternalForm());   // TODO: this should start an activity rather than doing it this way
         }
+
+        final Button button = (Button) findViewById(R.id.button);
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                // Perform action on click
+                startActivity(new Intent(MainActivity.this, CBLiteConsoleActivity.class));
+            }
+        });
 
     }
 
