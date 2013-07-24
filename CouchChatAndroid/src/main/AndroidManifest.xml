@@ -36,6 +36,10 @@
                     android:value="com.couchbase.couchbaseliteproject.MainActivity" />
         </activity>
 
+        <activity
+                android:name="com.couchbase.cblite.cbliteconsole.AllDocsActivity"
+                android:label="@string/title_activity_all_docs" >
+        </activity>
 
     </application>
 

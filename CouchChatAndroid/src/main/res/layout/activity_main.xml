@@ -18,9 +18,27 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Show Console"
-            android:id="@+id/button"
+            android:id="@+id/buttonShowConsole"
+            android:layout_marginTop="23dp"
+            android:layout_below="@+id/buttonFbLogin"
+            android:layout_centerHorizontal="true"/>
+
+    <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Facebook Login"
+            android:id="@+id/buttonFbLogin"
+            android:layout_marginTop="16dp"
             android:layout_below="@+id/hello_world"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="25dp"/>
+            android:layout_alignLeft="@+id/hello_world"/>
+
+    <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Persona Login"
+            android:id="@+id/buttonPersonaLogin"
+            android:layout_alignTop="@+id/buttonFbLogin"
+            android:layout_toRightOf="@+id/buttonFbLogin"
+            android:layout_marginLeft="39dp"/>
 
 </RelativeLayout>

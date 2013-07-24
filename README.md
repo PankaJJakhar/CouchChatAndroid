@@ -10,13 +10,15 @@ This is a demo chat client which uses [Couchbase Lite](https://github.com/couchb
 
 Unlike [GrocerySync-Android](https://github.com/couchbaselabs/GrocerySync-Android) which uses remote Maven artifacts to depend on Couchbase-Lite, CouchChat requires the code for Couchbase-Lite to be on the filesystem, and it builds the Couchbase-Lite code directly as part of the build process.  This enables easy debugging and hacking on Couchbase-Lite.
 
-* `git clone https://github.com/couchbaselabs/CouchChatAndroid.git` to clone the git repo.
+* `$ git clone https://github.com/couchbaselabs/CouchChatAndroid.git` to clone the git repo.
 
-* `cd CouchChatAndroid` 
+* `$ cd CouchChatAndroid` 
 
-* `cp local.properties.example local.properties` and customize local.properties to point to your SDK location if it is different than the default.
+* `$ git submodule init && git submodule update`
 
-* `cd ..` followed by `git clone https://github.com/couchbase/couchbase-lite-android.git` to get the Couchbase-Lite code in the place expected by CouchChat.  Your directory structure should look like this:
+* `$ cp local.properties.example local.properties` and customize local.properties to point to your SDK location if it is different than the default.
+
+* `$ cd ..` followed by `git clone https://github.com/couchbase/couchbase-lite-android.git` to get the Couchbase-Lite code in the place expected by CouchChat.  Your directory structure should look like this:
 
 ```
 .

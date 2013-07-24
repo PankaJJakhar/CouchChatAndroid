@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
 
         //for some reason a traditional static initializer causes junit to die
         if(!initializedUrlHandler) {
@@ -80,25 +81,53 @@ public class MainActivity extends Activity {
             initializedUrlHandler = true;
         }
 
+
+        // db is initialized in onPostResume() rather than onCreate()
+
+        final Button buttonFbLogin = (Button) findViewById(R.id.buttonFbLogin);
+        buttonFbLogin.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                doFbLogin();
+            }
+        });
+
+        final Button buttonPersonaLogin = (Button) findViewById(R.id.buttonPersonaLogin);
+        buttonPersonaLogin.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                setupWebView(getReplicationURL().toExternalForm());   // TODO: this should start an activity rather than doing it this way
+            }
+        });
+
+        final Button button = (Button) findViewById(R.id.buttonShowConsole);
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                Intent intent = new Intent(MainActivity.this, CBLiteConsoleActivity.class);
+                Bundle b = new Bundle();
+                b.putString(CBLiteConsoleActivity.INTENT_PARAMETER_DATABASE_NAME, DATABASE_NAME);
+                intent.putExtras(b);
+                startActivity(intent);
+            }
+        });
+
+
+    }
+
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if(httpClient != null) {
+            httpClient.shutdown();
+        }
+        server.close();
+    }
+
+    @Override
+    protected void onPostResume() {
+        super.onPostResume();
         startCBLite();
         startDatabase();
         startEktorp();
-
-        if (authenticationMechanism == AuthenticationMechanism.FACEBOOK) {
-            setContentView(R.layout.activity_main);
-            doFbLogin();
-        }
-        else if (authenticationMechanism == AuthenticationMechanism.PERSONA) {
-            setupWebView(getReplicationURL().toExternalForm());   // TODO: this should start an activity rather than doing it this way
-        }
-
-        final Button button = (Button) findViewById(R.id.button);
-        button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                // Perform action on click
-                startActivity(new Intent(MainActivity.this, CBLiteConsoleActivity.class));
-            }
-        });
 
     }
 
@@ -167,10 +196,6 @@ public class MainActivity extends Activity {
 
     protected void startCBLite() {
         try {
-            String serverPath = getServerPath();
-            File serverPathFile = new File(serverPath);
-            FileDirUtils.deleteRecursive(serverPathFile);
-            serverPathFile.mkdir();
             server = new CBLServer(getServerPath());
         } catch (IOException e) {
             e.printStackTrace();
@@ -242,6 +267,8 @@ public class MainActivity extends Activity {
     }
 
     public void startReplicationsWithFacebookToken(String accessToken, String email) {
+
+        Log.d(TAG, "startReplicationsWithFacebookToken()");
 
         httpClient = new CBLiteHttpClient(server);
         dbInstance = new StdCouchDbInstance(httpClient);
