@@ -161,6 +161,7 @@ public class MainActivity extends Activity {
                                     TextView welcome = (TextView) findViewById(R.id.hello_world);
                                     welcome.setText("Hello " + user.getName() + "!");
 
+
                                     startReplicationsWithFacebookToken(accessToken, (String)user.getProperty("email"));
                                 }
 
@@ -278,12 +279,13 @@ public class MainActivity extends Activity {
 
         String urlWithExtraParams = null;
         try {
+            String emailEncoded = URLEncoder.encode(email, "utf-8");
             urlWithExtraParams = String.format("%s?%s=%s&%s=%s",
                     getReplicationURL().toExternalForm(),
                     CBLFacebookAuthorizer.QUERY_PARAMETER,
                     accessToken,
                     CBLFacebookAuthorizer.QUERY_PARAMETER_EMAIL,
-                    URLEncoder.encode(email, "utf-8")
+                    emailEncoded
             );
         } catch (UnsupportedEncodingException e) {
             throw new IllegalArgumentException(e);
