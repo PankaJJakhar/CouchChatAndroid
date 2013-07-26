@@ -87,7 +87,11 @@ public class MainActivity extends Activity {
         final Button buttonFbLogin = (Button) findViewById(R.id.buttonFbLogin);
         buttonFbLogin.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                doFbLogin();
+                try {
+                    doFbLogin();
+                } catch (Exception e) {
+                    alert("Error doing fb login", e);
+                }
             }
         });
 
@@ -291,14 +295,52 @@ public class MainActivity extends Activity {
             throw new IllegalArgumentException(e);
         }
 
+        startReplicationsWithUrl(urlWithExtraParams);
+
+        /*
         ReplicationCommand pushCommand = new ReplicationCommand.Builder()
                 .source(urlWithExtraParams)
                 .target(DATABASE_NAME)
                 .continuous(false)
                 .build();
 
-        ReplicationStatus status = dbInstance.replicate(pushCommand);
+        ReplicationStatus status = dbInstance.replicate(pushCommand); */
 
+
+    }
+
+    public void startReplicationsWithUrl(String urlWithExtraParams) {
+
+        final ReplicationCommand pushReplicationCommand = new ReplicationCommand.Builder()
+                .source(DATABASE_NAME)
+                .target(urlWithExtraParams)
+                .continuous(true)
+                .build();
+
+        EktorpAsyncTask pushReplication = new EktorpAsyncTask() {
+            @Override
+            protected void doInBackground() {
+                dbInstance.replicate(pushReplicationCommand);
+            }
+        };
+
+        pushReplication.execute();
+
+        final ReplicationCommand pullReplicationCommand = new ReplicationCommand.Builder()
+                .source(urlWithExtraParams)
+                .target(DATABASE_NAME)
+                .continuous(true)
+                .build();
+
+        EktorpAsyncTask pullReplication = new EktorpAsyncTask() {
+
+            @Override
+            protected void doInBackground() {
+                dbInstance.replicate(pullReplicationCommand);
+            }
+        };
+
+        pullReplication.execute();
 
     }
 
