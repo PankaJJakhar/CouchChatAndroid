@@ -14,15 +14,30 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.couchbase.cblite.CBLAttachment;
+import com.couchbase.cblite.CBLBlobKey;
+import com.couchbase.cblite.CBLBlobStore;
+import com.couchbase.cblite.CBLBlobStoreWriter;
 import com.couchbase.cblite.CBLDatabase;
+import com.couchbase.cblite.CBLRevision;
 import com.couchbase.cblite.CBLServer;
+import com.couchbase.cblite.CBLStatus;
 import com.couchbase.cblite.auth.CBLFacebookAuthorizer;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
 import com.couchbase.cblite.cbliteconsole.CBLiteConsoleActivity;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
-import com.couchbase.cblite.support.FileDirUtils;
+import com.couchbase.cblite.support.Base64;
+import com.couchbase.cblite.support.CBLMultipartReader;
+import com.couchbase.cblite.support.CBLMultipartReaderDelegate;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.ByteArrayBody;
+import org.apache.http.entity.mime.content.StringBody;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.ByteArrayBuffer;
 import org.ektorp.CouchDbConnector;
 import org.ektorp.CouchDbInstance;
 import org.ektorp.ReplicationCommand;
@@ -31,18 +46,26 @@ import org.ektorp.android.util.EktorpAsyncTask;
 import org.ektorp.http.HttpClient;
 import org.ektorp.impl.StdCouchDbInstance;
 
-import java.io.File;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.util.concurrent.CountDownLatch;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import com.facebook.*;
 import com.facebook.model.*;
 import android.widget.TextView;
 import android.content.Intent;
+
+import junit.framework.Assert;
 
 public class MainActivity extends Activity {
 
@@ -56,7 +79,6 @@ public class MainActivity extends Activity {
 
     protected static HttpClient httpClient;
     protected CBLServer server = null;
-    protected CBLDatabase database = null;
     protected CouchDbInstance dbInstance;
     protected CouchDbConnector couchDbConnector;
 
@@ -129,9 +151,365 @@ public class MainActivity extends Activity {
     @Override
     protected void onPostResume() {
         super.onPostResume();
-        startCBLite();
-        startDatabase();
-        startEktorp();
+
+        try {
+            startCBLite();
+            startDatabase();
+            startEktorp();
+            // experiment();
+            // experiment2();
+            //experiment3();
+            //experiment4();
+            experiment5();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void experiment5() throws IOException {
+
+        CBLDatabase database = server.getDatabaseNamed(DATABASE_NAME);
+
+        CBLBlobStore attachments = database.getAttachments();
+        attachments.deleteBlobs();
+        Assert.assertEquals(0, attachments.count());
+
+        CBLStatus status = new CBLStatus();
+        Map<String,Object> rev1Properties = new HashMap<String,Object>();
+        rev1Properties.put("foo", 1);
+        rev1Properties.put("bar", false);
+        CBLRevision rev1 = database.putRevision(new CBLRevision(rev1Properties, database), null, false, status);
+
+        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
+
+        StringBuffer largeAttachment = new StringBuffer();
+        for (int i=0; i<CBLDatabase.kBigAttachmentLength; i++) {
+            largeAttachment.append("big attachment!");
+        }
+        byte[] attach1 = largeAttachment.toString().getBytes();
+        status = database.insertAttachmentForSequenceWithNameAndType(new ByteArrayInputStream(attach1), rev1.getSequence(), "attach", "text/plain", rev1.getGeneration());
+        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
+
+        CBLAttachment attachment = database.getAttachmentForSequence(rev1.getSequence(), "attach", status);
+        Assert.assertEquals(CBLStatus.OK, status.getCode());
+        Assert.assertEquals("text/plain", attachment.getContentType());
+        byte[] data = IOUtils.toByteArray(attachment.getContentStream());
+        Assert.assertTrue(Arrays.equals(attach1, data));
+
+        EnumSet<CBLDatabase.TDContentOptions> contentOptions = EnumSet.of(
+                CBLDatabase.TDContentOptions.TDIncludeAttachments,
+                CBLDatabase.TDContentOptions.TDBigAttachmentsFollow
+        );
+
+        Map<String,Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
+                rev1.getSequence(),
+                contentOptions
+        );
+
+        Map<String,Object> innerDict = (Map<String,Object>) attachmentDictForSequence.get("attach");
+
+        if (!innerDict.containsKey("stub")) {
+            throw new RuntimeException("Expected attachment dict to have 'stub' key");
+        }
+
+        if (((Boolean)innerDict.get("stub")).booleanValue() == false) {
+            throw new RuntimeException("Expected attachment dict 'stub' key to be true");
+        }
+
+        if (!innerDict.containsKey("follows")) {
+            throw new RuntimeException("Expected attachment dict to have 'follows' key");
+        }
+
+    }
+
+    class MultipartReaderTest  {
+
+        class TestMultipartReaderDelegate implements CBLMultipartReaderDelegate {
+
+            private ByteArrayBuffer currentPartData;
+            private List<Map<String, String>> headersList;
+            private List<ByteArrayBuffer> partList;
+
+            public void startedPart(Map<String, String> headers) {
+                Assert.assertNull(currentPartData);
+                if (partList == null) {
+                    partList = new ArrayList<ByteArrayBuffer>();
+                }
+                currentPartData = new ByteArrayBuffer(1024);
+                partList.add(currentPartData);
+                if (headersList == null) {
+                    headersList = new ArrayList<Map<String, String>>();
+                }
+                headersList.add(headers);
+            }
+
+            public void appendToPart(byte[] data) {
+                Assert.assertNotNull(currentPartData);
+                currentPartData.append(data, 0, data.length);
+            }
+
+            public void finishedPart() {
+                Assert.assertNotNull(currentPartData);
+                currentPartData = null;
+            }
+
+        }
+
+        public void testParseContentType() {
+
+            Charset utf8 = Charset.forName("UTF-8");
+            HashMap<String, byte[]> contentTypes = new HashMap<String, byte[]>();
+            contentTypes.put("multipart/related; boundary=\"BOUNDARY\"", new String("\r\n--BOUNDARY").getBytes(utf8));
+            contentTypes.put("multipart/related; boundary=BOUNDARY", new String("\r\n--BOUNDARY").getBytes(utf8));
+            contentTypes.put("multipart/related;boundary=X", new String("\r\n--X").getBytes(utf8));
+
+            for (String contentType : contentTypes.keySet()) {
+                CBLMultipartReaderDelegate delegate = null;
+                CBLMultipartReader reader = new CBLMultipartReader(contentType, delegate);
+                byte[] expectedBoundary = (byte[]) contentTypes.get(contentType);
+                byte[] boundary = reader.getBoundary();
+                Assert.assertTrue(Arrays.equals(boundary, expectedBoundary));
+            }
+
+            try {
+                CBLMultipartReaderDelegate delegate = null;
+                CBLMultipartReader reader = new CBLMultipartReader("multipart/related; boundary=\"BOUNDARY", delegate);
+                Assert.assertTrue("Should not have gotten here, above lines should have thrown exception", false);
+            } catch (Exception e) {
+                // expected exception
+            }
+
+        }
+
+        public void testParseHeaders() {
+            String testString = new String("\r\nFoo: Bar\r\n Header : Val ue ");
+            CBLMultipartReader reader = new CBLMultipartReader("multipart/related;boundary=X", null);
+            reader.parseHeaders(testString);
+            Assert.assertEquals(reader.headers.keySet().size(), 2);
+        }
+
+        public void testReaderOperation() {
+
+            Charset utf8 = Charset.forName("UTF-8");
+
+            byte[] mime = new String("--BOUNDARY\r\nFoo: Bar\r\n Header : Val ue \r\n\r\npart the first\r\n--BOUNDARY  \r\n\r\n2nd part\r\n--BOUNDARY--").getBytes(utf8);
+
+            for (int chunkSize=1; chunkSize <= mime.length; ++chunkSize) {
+                ByteArrayInputStream mimeInputStream = new ByteArrayInputStream(mime);
+                TestMultipartReaderDelegate delegate = new TestMultipartReaderDelegate();
+                String contentType = "multipart/related; boundary=\"BOUNDARY\"";
+                CBLMultipartReader reader = new CBLMultipartReader(contentType, delegate);
+                Assert.assertFalse(reader.finished());
+
+                int location = 0;
+                int length = 0;
+
+                do {
+                    Assert.assertTrue("Parser didn't stop at end", location < mime.length);
+                    length = Math.min(chunkSize, (mime.length - location));
+                    byte[] bytesRead = new byte[length];
+                    mimeInputStream.read(bytesRead, 0, length);
+                    reader.appendData(bytesRead);
+                    location += chunkSize;
+                } while (!reader.finished());
+
+                Assert.assertEquals(delegate.partList.size(), 2);
+                Assert.assertEquals(delegate.headersList.size(), 2);
+
+                byte[] part1Expected = new String("part the first").getBytes(utf8);
+                byte[] part2Expected = new String("2nd part").getBytes(utf8);
+                ByteArrayBuffer part1 = delegate.partList.get(0);
+                ByteArrayBuffer part2 = delegate.partList.get(1);
+                Assert.assertTrue(Arrays.equals(part1.toByteArray(), part1Expected));
+                Assert.assertTrue(Arrays.equals(part2.toByteArray(), part2Expected));
+
+                Map<String, String> headers1 = delegate.headersList.get(0);
+                Assert.assertTrue(headers1.containsKey("Foo"));
+                Assert.assertEquals(headers1.get("Foo"), "Bar");
+
+                Assert.assertTrue(headers1.containsKey("Header"));
+                Assert.assertEquals(headers1.get("Header"), "Val ue");
+
+            }
+
+
+        }
+
+
+
+
+
+
+    }
+
+    private void experiment3() {
+
+        MultipartReaderTest readerTest = new MultipartReaderTest();
+        readerTest.testParseContentType();
+        readerTest.testParseHeaders();
+        readerTest.testReaderOperation();
+        System.out.println("done");
+
+
+    }
+
+    public void experiment4() {
+
+
+        CBLDatabase database = server.getDatabaseNamed(DATABASE_NAME);
+
+        CBLBlobStore attachments = database.getAttachments();
+
+        CBLBlobStoreWriter blobWriter = new CBLBlobStoreWriter(attachments);
+        String testBlob = "foo";
+        blobWriter.appendData(new String(testBlob).getBytes());
+        blobWriter.finish();
+
+        String sha1Base64Digest = "sha1-C+7Hteo/D9vJXQ3UfzxbwnXaijM=";
+        Assert.assertEquals(blobWriter.sHA1DigestString(), sha1Base64Digest);
+        Assert.assertEquals(blobWriter.mD5DigestString(), "md5-rL0Y20zC+Fzt72VPzMSk2A==");
+
+        // install it
+        blobWriter.install();
+
+        // look it up in blob store and make sure it's there
+        CBLBlobKey blobKey = new CBLBlobKey(sha1Base64Digest);
+        byte[] blob = attachments.blobForKey(blobKey);
+        Assert.assertTrue(Arrays.equals(testBlob.getBytes(Charset.forName("UTF-8")), blob));
+
+        System.out.println("");
+
+
+    }
+
+
+
+    private void experiment2() {
+
+        EktorpAsyncTask asyncTask = new EktorpAsyncTask() {
+            @Override
+            protected void doInBackground() {
+
+                try {
+
+                    /*
+
+                    NSDictionary* attachments = rev[@"_attachments"];
+    for (NSString* attachmentName in [CBLCanonicalJSON orderedKeys: attachments]) {
+        NSDictionary* attachment = attachments[attachmentName];
+        if (attachment[@"follows"]) {
+            if (!bodyStream) {
+                // Create the HTTP multipart stream:
+                bodyStream = [[CBLMultipartWriter alloc] initWithContentType: @"multipart/related"
+                                                                      boundary: nil];
+                [bodyStream setNextPartsHeaders: $dict({@"Content-Type", @"application/json"})];
+                // Use canonical JSON encoder so that _attachments keys will be written in the
+                // same order that this for loop is processing the attachments.
+                NSData* json = [CBLCanonicalJSON canonicalData: rev.properties];
+                [bodyStream addData: json];
+            }
+            NSString* disposition = $sprintf(@"attachment; filename=%@", CBLQuoteString(attachmentName));
+            NSString* contentType = attachment[@"type"];
+            NSString* contentEncoding = attachment[@"encoding"];
+            [bodyStream setNextPartsHeaders: $dict({@"Content-Disposition", disposition},
+                                                   {@"Content-Type", contentType},
+                                                   {@"Content-Encoding", contentEncoding})];
+            [bodyStream addFileURL: [_db fileForAttachmentDict: attachment]];
+        }
+    }
+
+
+                     */
+
+                    org.apache.http.client.HttpClient httpClient =  new DefaultHttpClient();
+
+                    HttpPost post = new HttpPost(getReplicationURL().toExternalForm());
+                    MultipartEntity multiPart = new MultipartEntity();
+
+
+                    Map<String,Object> revProperties = new HashMap<String,Object>();
+                    revProperties.put("foo", 1);
+                    revProperties.put("bar", false);
+                    String json  = CBLServer.getObjectMapper().writeValueAsString(revProperties);
+
+                    Charset utf8charset = Charset.forName("UTF-8");
+
+                    multiPart.addPart("param1", new StringBody(json, "application/json", utf8charset));
+
+                    String body = new String("hello");
+                    byte[] bytes = body.getBytes();
+                    multiPart.addPart("file", new ByteArrayBody(bytes, "application/png", "whatever.png"));
+
+                    post.setEntity(multiPart);
+                    httpClient.execute(post);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        };
+        asyncTask.execute();
+
+    }
+
+    private void experiment() {
+
+        try {
+            CBLDatabase database = server.getDatabaseNamed(DATABASE_NAME);
+            CBLStatus status = new CBLStatus();
+            Map<String,Object> rev1Properties = new HashMap<String,Object>();
+            rev1Properties.put("foo", 1);
+            rev1Properties.put("bar", false);
+            CBLRevision rev1 = database.putRevision(new CBLRevision(rev1Properties, database), null, false, status);
+
+            Assert.assertEquals(CBLStatus.CREATED, status.getCode());
+
+            StringBuffer largeAttachment = new StringBuffer();
+            for (int i=0; i<CBLDatabase.kBigAttachmentLength; i++) {
+                largeAttachment.append("big attachment!");
+            }
+            byte[] attach1 = largeAttachment.toString().getBytes();
+            status = database.insertAttachmentForSequenceWithNameAndType(new ByteArrayInputStream(attach1), rev1.getSequence(), "attach", "text/plain", rev1.getGeneration());
+            Assert.assertEquals(CBLStatus.CREATED, status.getCode());
+
+            CBLAttachment attachment = database.getAttachmentForSequence(rev1.getSequence(), "attach", status);
+            Assert.assertEquals(CBLStatus.OK, status.getCode());
+            Assert.assertEquals("text/plain", attachment.getContentType());
+            byte[] data = IOUtils.toByteArray(attachment.getContentStream());
+            Assert.assertTrue(Arrays.equals(attach1, data));
+
+            EnumSet<CBLDatabase.TDContentOptions> contentOptions = EnumSet.of(
+                    CBLDatabase.TDContentOptions.TDIncludeAttachments,
+                    CBLDatabase.TDContentOptions.TDBigAttachmentsFollow
+            );
+
+            Map<String,Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
+                    rev1.getSequence(),
+                    contentOptions
+            );
+
+            Map<String,Object> innerDict = (Map<String,Object>) attachmentDictForSequence.get("attach");
+
+            if (!innerDict.containsKey("stub")) {
+                throw new RuntimeException("Expected attachment dict to have 'stub' key");
+            }
+
+            if (((Boolean)innerDict.get("stub")).booleanValue() == false) {
+                throw new RuntimeException("Expected attachment dict 'stub' key to be true");
+            }
+
+            if (!innerDict.containsKey("follows")) {
+                throw new RuntimeException("Expected attachment dict to have 'follows' key");
+            }
+
+
+            Log.d(TAG, "attachmentDictForSequence: " + attachmentDictForSequence);
+
+        } catch (IOException e) {
+
+            e.printStackTrace();
+        }
 
     }
 
