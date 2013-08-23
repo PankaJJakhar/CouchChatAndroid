@@ -1,6 +1,7 @@
 package com.couchbase.couchchatandroid;
 
 import android.content.Context;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.app.Activity;
 import android.util.Log;
@@ -26,17 +27,33 @@ import com.couchbase.cblite.auth.CBLFacebookAuthorizer;
 import com.couchbase.cblite.auth.CBLPersonaAuthorizer;
 import com.couchbase.cblite.cbliteconsole.CBLiteConsoleActivity;
 import com.couchbase.cblite.ektorp.CBLiteHttpClient;
+import com.couchbase.cblite.replicator.changetracker.CBLChangeTracker;
+import com.couchbase.cblite.replicator.changetracker.CBLChangeTrackerClient;
 import com.couchbase.cblite.router.CBLURLStreamHandlerFactory;
 import com.couchbase.cblite.support.Base64;
 import com.couchbase.cblite.support.CBLMultipartReader;
 import com.couchbase.cblite.support.CBLMultipartReaderDelegate;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpHost;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.StatusLine;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.conn.ClientConnectionManager;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntity;
 import org.apache.http.entity.mime.content.ByteArrayBody;
 import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicHeader;
+import org.apache.http.params.HttpParams;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.ByteArrayBuffer;
 import org.ektorp.CouchDbConnector;
 import org.ektorp.CouchDbInstance;
@@ -62,6 +79,7 @@ import java.util.Map;
 
 import com.facebook.*;
 import com.facebook.model.*;
+
 import android.widget.TextView;
 import android.content.Intent;
 
@@ -98,7 +116,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         //for some reason a traditional static initializer causes junit to die
-        if(!initializedUrlHandler) {
+        if (!initializedUrlHandler) {
             CBLURLStreamHandlerFactory.registerSelfIgnoreError();
             initializedUrlHandler = true;
         }
@@ -142,7 +160,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        if(httpClient != null) {
+        if (httpClient != null) {
             httpClient.shutdown();
         }
         server.close();
@@ -152,18 +170,154 @@ public class MainActivity extends Activity {
     protected void onPostResume() {
         super.onPostResume();
 
+
+        startCBLite();
+        startDatabase();
+        startEktorp();
+        // experiment();
+        // experiment2();
+        //experiment3();
+        //experiment4();
+        // experiment5();
+        experiment6();
+
+    }
+
+    public void experiment6() {
+
+        URL testURL = getReplicationURL();
+        final MockHttpClient mockHttpClient = new MockHttpClient();
+
+        CBLChangeTrackerClient client = new CBLChangeTrackerClient() {
+
+            @Override
+            public void changeTrackerStopped(CBLChangeTracker tracker) {
+                Log.v(TAG, "changeTrackerStopped");
+            }
+
+            @Override
+            public void changeTrackerReceivedChange(Map<String, Object> change) {
+                Object seq = change.get("seq");
+                Log.v(TAG, "changeTrackerReceivedChange: " + seq.toString());
+            }
+
+            @Override
+            public org.apache.http.client.HttpClient getHttpClient() {
+                return mockHttpClient;
+            }
+        };
+
+        final CBLChangeTracker changeTracker = new CBLChangeTracker(testURL, CBLChangeTracker.TDChangeTrackerMode.Continuous, 0, client, null);
+
+        AsyncTask task = new AsyncTask<Object, Object, Object>() {
+            @Override
+            protected Object doInBackground(Object... aParams) {
+                changeTracker.start();
+                return null;
+            }
+        };
+        task.execute();
+
         try {
-            startCBLite();
-            startDatabase();
-            startEktorp();
-            // experiment();
-            // experiment2();
-            //experiment3();
-            //experiment4();
-            experiment5();
-        } catch (IOException e) {
-            e.printStackTrace();
+
+            // expected behavior:
+            // when:
+            //    mockHttpClient throws IOExceptions -> it should start high and then back off and numTimesExecute should be low
+
+            for (int i=0; i<30; i++) {
+
+                int numTimesExectutedAfter10seconds = 0;
+
+                try {
+                    Thread.sleep(1000);
+
+                    // take a snapshot of num times the http client was called after 10 seconds
+                    if (i == 10) {
+                        numTimesExectutedAfter10seconds = mockHttpClient.getNumTimesExecuteCalled();
+                    }
+
+                    // take another snapshot after 20 seconds have passed
+                    if (i == 20) {
+                        // by now it should have backed off, so the delta between 10s and 20s should be small
+                        int delta = mockHttpClient.getNumTimesExecuteCalled() - numTimesExectutedAfter10seconds;
+                        Assert.assertTrue(delta < 25);
+                    }
+
+
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        } finally {
+            changeTracker.stop();
         }
+
+    }
+
+
+    class MockHttpClient implements org.apache.http.client.HttpClient {
+
+        private int numTimesExecuteCalled = 0;
+
+        public int getNumTimesExecuteCalled() {
+            return numTimesExecuteCalled;
+        }
+
+        @Override
+        public HttpParams getParams() {
+            return null;
+        }
+
+        @Override
+        public ClientConnectionManager getConnectionManager() {
+            return null;
+        }
+
+        @Override
+        public HttpResponse execute(HttpUriRequest httpUriRequest) throws IOException, ClientProtocolException {
+            numTimesExecuteCalled++;
+            throw new IOException("Test IOException");
+        }
+
+        @Override
+        public HttpResponse execute(HttpUriRequest httpUriRequest, HttpContext httpContext) throws IOException, ClientProtocolException {
+            numTimesExecuteCalled++;
+            throw new IOException("Test IOException");
+        }
+
+        @Override
+        public HttpResponse execute(HttpHost httpHost, HttpRequest httpRequest) throws IOException, ClientProtocolException {
+            numTimesExecuteCalled++;
+            throw new IOException("Test IOException");
+        }
+
+        @Override
+        public HttpResponse execute(HttpHost httpHost, HttpRequest httpRequest, HttpContext httpContext) throws IOException, ClientProtocolException {
+            numTimesExecuteCalled++;
+            throw new IOException("Test IOException");
+        }
+
+        @Override
+        public <T> T execute(HttpUriRequest httpUriRequest, ResponseHandler<? extends T> responseHandler) throws IOException, ClientProtocolException {
+            throw new IOException("<T> Test IOException");
+        }
+
+        @Override
+        public <T> T execute(HttpUriRequest httpUriRequest, ResponseHandler<? extends T> responseHandler, HttpContext httpContext) throws IOException, ClientProtocolException {
+            throw new IOException("<T> Test IOException");
+        }
+
+        @Override
+        public <T> T execute(HttpHost httpHost, HttpRequest httpRequest, ResponseHandler<? extends T> responseHandler) throws IOException, ClientProtocolException {
+            throw new IOException("<T> Test IOException");
+        }
+
+        @Override
+        public <T> T execute(HttpHost httpHost, HttpRequest httpRequest, ResponseHandler<? extends T> responseHandler, HttpContext httpContext) throws IOException, ClientProtocolException {
+            throw new IOException("<T> Test IOException");
+        }
+
+
     }
 
     public void experiment5() throws IOException {
@@ -175,7 +329,7 @@ public class MainActivity extends Activity {
         Assert.assertEquals(0, attachments.count());
 
         CBLStatus status = new CBLStatus();
-        Map<String,Object> rev1Properties = new HashMap<String,Object>();
+        Map<String, Object> rev1Properties = new HashMap<String, Object>();
         rev1Properties.put("foo", 1);
         rev1Properties.put("bar", false);
         CBLRevision rev1 = database.putRevision(new CBLRevision(rev1Properties, database), null, false, status);
@@ -183,7 +337,7 @@ public class MainActivity extends Activity {
         Assert.assertEquals(CBLStatus.CREATED, status.getCode());
 
         StringBuffer largeAttachment = new StringBuffer();
-        for (int i=0; i<CBLDatabase.kBigAttachmentLength; i++) {
+        for (int i = 0; i < CBLDatabase.kBigAttachmentLength; i++) {
             largeAttachment.append("big attachment!");
         }
         byte[] attach1 = largeAttachment.toString().getBytes();
@@ -201,18 +355,18 @@ public class MainActivity extends Activity {
                 CBLDatabase.TDContentOptions.TDBigAttachmentsFollow
         );
 
-        Map<String,Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
+        Map<String, Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
                 rev1.getSequence(),
                 contentOptions
         );
 
-        Map<String,Object> innerDict = (Map<String,Object>) attachmentDictForSequence.get("attach");
+        Map<String, Object> innerDict = (Map<String, Object>) attachmentDictForSequence.get("attach");
 
         if (!innerDict.containsKey("stub")) {
             throw new RuntimeException("Expected attachment dict to have 'stub' key");
         }
 
-        if (((Boolean)innerDict.get("stub")).booleanValue() == false) {
+        if (((Boolean) innerDict.get("stub")).booleanValue() == false) {
             throw new RuntimeException("Expected attachment dict 'stub' key to be true");
         }
 
@@ -220,9 +374,15 @@ public class MainActivity extends Activity {
             throw new RuntimeException("Expected attachment dict to have 'follows' key");
         }
 
+        CBLRevision rev1WithAttachments = database.getDocumentWithIDAndRev(rev1.getDocId(), rev1.getRevId(), contentOptions);
+        Map<String, Object> rev1PropertiesPrime = rev1WithAttachments.getProperties();
+        rev1PropertiesPrime.put("foo", 2);
+        CBLRevision rev2 = database.putRevision(rev1WithAttachments, rev1WithAttachments.getRevId(), false, status);
+        Assert.assertEquals(CBLStatus.CREATED, status.getCode());
+
     }
 
-    class MultipartReaderTest  {
+    class MultipartReaderTest {
 
         class TestMultipartReaderDelegate implements CBLMultipartReaderDelegate {
 
@@ -294,7 +454,7 @@ public class MainActivity extends Activity {
 
             byte[] mime = new String("--BOUNDARY\r\nFoo: Bar\r\n Header : Val ue \r\n\r\npart the first\r\n--BOUNDARY  \r\n\r\n2nd part\r\n--BOUNDARY--").getBytes(utf8);
 
-            for (int chunkSize=1; chunkSize <= mime.length; ++chunkSize) {
+            for (int chunkSize = 1; chunkSize <= mime.length; ++chunkSize) {
                 ByteArrayInputStream mimeInputStream = new ByteArrayInputStream(mime);
                 TestMultipartReaderDelegate delegate = new TestMultipartReaderDelegate();
                 String contentType = "multipart/related; boundary=\"BOUNDARY\"";
@@ -334,10 +494,6 @@ public class MainActivity extends Activity {
 
 
         }
-
-
-
-
 
 
     }
@@ -383,7 +539,6 @@ public class MainActivity extends Activity {
     }
 
 
-
     private void experiment2() {
 
         EktorpAsyncTask asyncTask = new EktorpAsyncTask() {
@@ -421,16 +576,16 @@ public class MainActivity extends Activity {
 
                      */
 
-                    org.apache.http.client.HttpClient httpClient =  new DefaultHttpClient();
+                    org.apache.http.client.HttpClient httpClient = new DefaultHttpClient();
 
                     HttpPost post = new HttpPost(getReplicationURL().toExternalForm());
                     MultipartEntity multiPart = new MultipartEntity();
 
 
-                    Map<String,Object> revProperties = new HashMap<String,Object>();
+                    Map<String, Object> revProperties = new HashMap<String, Object>();
                     revProperties.put("foo", 1);
                     revProperties.put("bar", false);
-                    String json  = CBLServer.getObjectMapper().writeValueAsString(revProperties);
+                    String json = CBLServer.getObjectMapper().writeValueAsString(revProperties);
 
                     Charset utf8charset = Charset.forName("UTF-8");
 
@@ -458,7 +613,7 @@ public class MainActivity extends Activity {
         try {
             CBLDatabase database = server.getDatabaseNamed(DATABASE_NAME);
             CBLStatus status = new CBLStatus();
-            Map<String,Object> rev1Properties = new HashMap<String,Object>();
+            Map<String, Object> rev1Properties = new HashMap<String, Object>();
             rev1Properties.put("foo", 1);
             rev1Properties.put("bar", false);
             CBLRevision rev1 = database.putRevision(new CBLRevision(rev1Properties, database), null, false, status);
@@ -466,7 +621,7 @@ public class MainActivity extends Activity {
             Assert.assertEquals(CBLStatus.CREATED, status.getCode());
 
             StringBuffer largeAttachment = new StringBuffer();
-            for (int i=0; i<CBLDatabase.kBigAttachmentLength; i++) {
+            for (int i = 0; i < CBLDatabase.kBigAttachmentLength; i++) {
                 largeAttachment.append("big attachment!");
             }
             byte[] attach1 = largeAttachment.toString().getBytes();
@@ -484,18 +639,18 @@ public class MainActivity extends Activity {
                     CBLDatabase.TDContentOptions.TDBigAttachmentsFollow
             );
 
-            Map<String,Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
+            Map<String, Object> attachmentDictForSequence = database.getAttachmentsDictForSequenceWithContent(
                     rev1.getSequence(),
                     contentOptions
             );
 
-            Map<String,Object> innerDict = (Map<String,Object>) attachmentDictForSequence.get("attach");
+            Map<String, Object> innerDict = (Map<String, Object>) attachmentDictForSequence.get("attach");
 
             if (!innerDict.containsKey("stub")) {
                 throw new RuntimeException("Expected attachment dict to have 'stub' key");
             }
 
-            if (((Boolean)innerDict.get("stub")).booleanValue() == false) {
+            if (((Boolean) innerDict.get("stub")).booleanValue() == false) {
                 throw new RuntimeException("Expected attachment dict 'stub' key to be true");
             }
 
@@ -544,7 +699,7 @@ public class MainActivity extends Activity {
                                     welcome.setText("Hello " + user.getName() + "!");
 
 
-                                    startReplicationsWithFacebookToken(accessToken, (String)user.getProperty("email"));
+                                    startReplicationsWithFacebookToken(accessToken, (String) user.getProperty("email"));
                                 }
 
                             }
@@ -594,7 +749,7 @@ public class MainActivity extends Activity {
     protected void startEktorp() {
         Log.v(TAG, "starting ektorp");
 
-        if(httpClient != null) {
+        if (httpClient != null) {
             httpClient.shutdown();
         }
 
