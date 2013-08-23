@@ -1,3 +1,9 @@
 [submodule "CBLiteConsole"]
 	path = CBLiteConsole
 	url = git@github.com:couchbaselabs/CBLiteConsole.git
+[submodule "CBLiteEktorp"]
+	path = CBLiteEktorp
+	url = https://github.com/couchbaselabs/CBLiteEktorp.git
+[submodule "CBLite"]
+	path = CBLite
+	url = https://github.com/couchbase/couchbase-lite-android-core.git
