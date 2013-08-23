@@ -9,8 +9,9 @@ CouchChat is currently just demo of authenticating against the [Sync Gateway](ht
 ## Getting CouchChat
 
 
-```
+```bash
 $ git clone https://github.com/couchbaselabs/CouchChatAndroid.git
+$ cd CouchChatAndroid
 $ git submodule init && git submodule update
 ```
 
