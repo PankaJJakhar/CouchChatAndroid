@@ -14,6 +14,11 @@ $ git clone https://github.com/couchbaselabs/CouchChatAndroid.git
 $ git submodule init && git submodule update
 ```
 
+## Configure Android Studio SDK location
+
+* `cp local.properties.example local.properties`
+* Customize `local.properties` according to your SDK installation directory
+
 ## Import Project into Android Studio
 
 Follow the instructions in the following sections of the  [Couchbase Lite Android README](https://github.com/couchbase/couchbase-lite-android/blob/master/README.md):
