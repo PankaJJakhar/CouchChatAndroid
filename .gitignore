@@ -27,3 +27,4 @@ build.properties
 \#*\#
 
 *.iml
+.idea/
